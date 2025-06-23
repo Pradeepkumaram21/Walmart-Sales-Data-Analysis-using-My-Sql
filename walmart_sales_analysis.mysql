@@ -1,0 +1,122 @@
+# Walmart Sales Data Analysis  
+
+## 🛠 Database Setup  
+
+```sql
+CREATE DATABASE IF NOT EXISTS salesgdatawalmart;
+USE salesgdatawalmart;
+
+CREATE TABLE IF NOT EXISTS walmartSales (
+    invoice_id VARCHAR(30) NOT NULL PRIMARY KEY,
+    branch VARCHAR(5) NOT NULL,
+    city VARCHAR(30) NOT NULL,
+    customer_type VARCHAR(30) NOT NULL,
+    gender VARCHAR(10) NOT NULL,
+    product_line VARCHAR(100) NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+    quantity INT NOT NULL,
+    VAT DECIMAL(6,4) NOT NULL,
+    total DECIMAL(12,4) NOT NULL,
+    date DATETIME NOT NULL,
+    time TIME NOT NULL,
+    payment_method VARCHAR(15) NOT NULL,
+    cogs DECIMAL(10,2) NOT NULL,
+    gross_margin_pct DECIMAL(5,2),
+    gross_income DECIMAL(12,4) NOT NULL,
+    rating DECIMAL(2,1)
+);
+
+ALTER TABLE walmartsales ADD COLUMN time_of_day VARCHAR(10);
+UPDATE walmartsales
+SET time_of_day = CASE 
+    WHEN HOUR(time) BETWEEN 6 AND 11 THEN 'Morning'
+    WHEN HOUR(time) BETWEEN 12 AND 17 THEN 'Noon'
+    ELSE 'Evening'
+END;
+
+ALTER TABLE walmartsales ADD COLUMN day_name VARCHAR(10);
+UPDATE walmartsales SET day_name = DAYNAME(date);
+
+ALTER TABLE walmartsales ADD COLUMN month_name VARCHAR(10);
+UPDATE walmartsales SET month_name = MONTHNAME(date);
+
+ALTER TABLE walmartsales ADD COLUMN trans_year INT;
+UPDATE walmartsales SET trans_year = YEAR(date);
+```
+
+## 📊 Analysis Queries  
+
+```sql
+-- Cities and Branches  
+SELECT DISTINCT city FROM walmartsales;
+SELECT DISTINCT city, branch FROM walmartsales;
+
+-- Product Analysis  
+SELECT COUNT(DISTINCT product_line) AS num_of_products FROM walmartsales;
+SELECT DISTINCT product_line FROM walmartsales;
+SELECT payment_method, COUNT(*) AS common_payment_method FROM walmartsales GROUP BY payment_method ORDER BY common_payment_method DESC;
+SELECT product_line, COUNT(*) AS cnt_product_line FROM walmartsales GROUP BY product_line ORDER BY cnt_product_line DESC;
+SELECT month_name, SUM(total) AS revenue FROM walmartsales GROUP BY month_name ORDER BY revenue DESC;
+SELECT month_name, SUM(cogs) AS highest_cogs FROM walmartsales GROUP BY month_name ORDER BY highest_cogs DESC LIMIT 1;
+SELECT city, SUM(total) AS revenue FROM walmartsales GROUP BY city ORDER BY revenue DESC LIMIT 1;
+SELECT product_line, SUM(VAT) AS highest_vat FROM walmartsales GROUP BY product_line ORDER BY highest_vat DESC LIMIT 1;
+
+WITH AverageProducts AS (
+    SELECT AVG(total_quantity) AS avg_quantity FROM (
+        SELECT SUM(quantity) AS total_quantity FROM walmartsales GROUP BY branch
+    ) AS BranchTotals
+)
+SELECT branch, SUM(quantity) AS total_quantity FROM walmartsales
+GROUP BY branch
+HAVING SUM(quantity) > (SELECT avg_quantity FROM AverageProducts);
+
+SELECT gender, product_line, COUNT(*) AS popular_product
+FROM walmartsales
+GROUP BY gender, product_line
+ORDER BY popular_product DESC;
+
+SELECT product_line, AVG(rating) AS avg_rating FROM walmartsales
+GROUP BY product_line
+ORDER BY avg_rating DESC;
+
+-- Sales Analysis  
+SELECT time_of_day, day_name, COUNT(*) AS num_sales FROM walmartsales GROUP BY time_of_day, day_name ORDER BY day_name, time_of_day;
+SELECT customer_type, SUM(total) AS revenue_per_customer_type FROM walmartsales GROUP BY customer_type ORDER BY revenue_per_customer_type DESC;
+SELECT city, ROUND(AVG(VAT),2) AS vat_per_city FROM walmartsales GROUP BY city ORDER BY vat_per_city DESC;
+SELECT customer_type, AVG(VAT) AS vat_customer_type FROM walmartsales GROUP BY customer_type ORDER BY vat_customer_type DESC;
+
+-- Customer Analysis  
+SELECT DISTINCT customer_type FROM walmartsales;
+SELECT DISTINCT payment_method FROM walmartsales;
+SELECT customer_type, COUNT(*) AS cnt_customer_type FROM walmartsales GROUP BY customer_type;
+SELECT customer_type, SUM(total) AS revenue_per_cust_type FROM walmartsales GROUP BY customer_type ORDER BY revenue_per_cust_type DESC;
+SELECT gender, COUNT(*) AS gender_dist FROM walmartsales GROUP BY gender ORDER BY gender_dist DESC;
+SELECT branch, gender, COUNT(*) AS gender_dis FROM walmartsales GROUP BY branch, gender ORDER BY branch;
+SELECT time_of_day, COUNT(rating) AS rat_cnt FROM walmartsales GROUP BY time_of_day ORDER BY rat_cnt DESC;
+
+WITH RatingsCount AS (
+    SELECT time_of_day, branch, COUNT(rating) AS total_ratings FROM walmartsales GROUP BY time_of_day, branch
+),
+RankedRatings AS (
+    SELECT *, ROW_NUMBER() OVER(PARTITION BY branch ORDER BY total_ratings DESC) AS rn FROM RatingsCount
+)
+SELECT time_of_day, branch, total_ratings FROM RankedRatings WHERE rn = 1;
+
+SELECT day_name, AVG(rating) AS avg_ratings FROM walmartsales GROUP BY day_name ORDER BY avg_ratings DESC;
+
+WITH DailyAvgRatings AS (
+    SELECT branch, day_name, AVG(rating) AS avg_ratings FROM walmartsales GROUP BY branch, day_name
+),
+RankedDays AS (
+    SELECT *, ROW_NUMBER() OVER(PARTITION BY branch ORDER BY avg_ratings DESC) AS rn FROM DailyAvgRatings
+)
+SELECT branch, day_name, avg_ratings FROM RankedDays WHERE rn = 1;
+
+-- Revenue & Profit  
+SELECT SUM(total) AS total_revenue FROM walmartsales;
+SELECT SUM(total) - SUM(cogs) AS gross_profit FROM walmartsales;
+SELECT month_name, SUM(total) AS total_sales FROM walmartsales GROUP BY month_name ORDER BY total_sales DESC LIMIT 1;
+SELECT month_name, SUM(gross_income) AS total_profit FROM walmartsales GROUP BY month_name ORDER BY total_profit DESC LIMIT 1;
+SELECT month_name, SUM(total) AS max_sales, SUM(gross_income) AS max_profit FROM walmartsales GROUP BY month_name ORDER BY max_sales DESC, max_profit DESC;
+```
+
